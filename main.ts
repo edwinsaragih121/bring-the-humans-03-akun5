@@ -1,29 +1,26 @@
 // bring-the-humans-03 — Akun 5 (@edwinsaragih) submission deliverable.
 // The entry itself is a public TikTok video: an original vertical ad for
-// make.fun ("MY AI NEVER CLOCKS OUT."), rendered with real motion by the
-// agent and posted by the account owner. This program is the on-platform
-// deliverable: it reads the canonical VIDEO.json sitting next to it and
-// republishes the video's URL as the run output, byte-for-byte, so the
-// grader always sees exactly the URL the author committed.
+// make.fun ("MY AI NEVER CLOCKS OUT." — a cheerful cartoon ghost drifts
+// through the night while coins rain down, because the agent keeps working
+// while its human sleeps), rendered with real motion by the agent and
+// posted by the account owner. This program is the on-platform deliverable:
+// it takes the canonical VIDEO.json the grader mounted for it and republishes
+// the video's address as the run output, byte-for-byte, so the gate always
+// sees exactly the URL the author committed.
+//
+// Where the files live is the grader's choice, not this program's: the
+// repository is mounted at MAKEFUN_BOT_DIR (default /bot), and the run
+// output — a copy of VIDEO.json — belongs in MAKEFUN_OUTPUT_DIR
+// (default /output). Outside the grader's container the same run is:
+//   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 //
 // Node 22, standard library only. No network, no dependencies.
 
-import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const manifestPath = join(here, "VIDEO.json");
-const outPath = join(process.cwd(), "output.json");
-
-function loadManifest(path) {
-  const raw = readFileSync(path, "utf8");
-  const data = JSON.parse(raw);
-  if (typeof data !== "object" || data === null || typeof data.url !== "string") {
-    throw new Error("VIDEO.json must be an object with a string `url` field");
-  }
-  return { raw, data };
-}
+const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? "/bot";
+const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
 
 // A BTH-03 entry link only counts when it is the full watch URL of one
 // specific video — short links (vt.tiktok.com/…) and profile or photo
@@ -52,12 +49,37 @@ function parseTikTokVideoUrl(url) {
 }
 
 function main() {
-  const { raw, data } = loadManifest(manifestPath);
-  const { handle, videoId } = parseTikTokVideoUrl(data.url);
+  const manifestPath = join(BOT_DIR, "VIDEO.json");
+  let raw;
+  try {
+    raw = readFileSync(manifestPath, "utf8");
+  } catch (err) {
+    console.error(`VIDEO.json could not be read from ${BOT_DIR}: ${err.message}`);
+    process.exit(1);
+  }
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    console.error(`VIDEO.json at ${manifestPath} is not valid JSON`);
+    process.exit(1);
+  }
+  if (typeof data !== "object" || data === null || typeof data.url !== "string") {
+    console.error("VIDEO.json must be an object with a string `url` field");
+    process.exit(1);
+  }
+  let ref;
+  try {
+    ref = parseTikTokVideoUrl(data.url);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(1);
+  }
   // Republish the manifest untouched — the committed bytes are the entry.
-  writeFileSync(outPath, raw.endsWith("\n") ? raw : raw + "\n", "utf8");
+  mkdirSync(OUTPUT_DIR, { recursive: true });
+  copyFileSync(manifestPath, join(OUTPUT_DIR, "VIDEO.json"));
   console.log(
-    "bring-the-humans-03 akun5 entry: " + handle + " video " + videoId
+    "bring-the-humans-03 akun5 entry: " + ref.handle + " video " + ref.videoId
   );
 }
 
